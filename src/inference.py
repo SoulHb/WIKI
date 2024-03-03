@@ -19,7 +19,7 @@ def visualize_image(file_path: str, cluster_num: int) -> None:
     - None
     """
     # Open the image file using the PIL library
-    img = Image.open(file_path)
+    img = Image.open(file_path).convert('RGB')
 
     # Display the image using matplotlib
     plt.imshow(img)
@@ -47,10 +47,8 @@ def get_middle_value(sorted_df: pd.DataFrame) -> str:
     """
     # Calculate the index of the middle value
     middle_index = sorted_df.shape[0] // 2
-
     # Extract the file path of the middle value using the calculated index
     middle_value = sorted_df.iloc[middle_index]['FilePath']
-
     return middle_value
 
 
@@ -72,7 +70,6 @@ def pick_avereged_images(cluster_centers: np.ndarray, train_dataset: np.ndarray,
 
     # Step 2: Find the 5 closest images for each cluster center
     closest_images_ids = np.argsort(distances, axis=1)[:, :10]
-
     # Assuming df_val_clusters is your dataframe with 'FilePath' column
     # and closest_images_ids is an array of shape (num_clusters, 5) with indices of the closest images
 
@@ -90,7 +87,7 @@ def pick_avereged_images(cluster_centers: np.ndarray, train_dataset: np.ndarray,
         closest_image_indices = closest_images_ids[i, :]
         closest_image_paths = [file_paths_dict[idx] for idx in closest_image_indices]
         weighted_df[f'Distance_to_Cluster_{i}'] = cluster_distances
-        weighted_df['FilePath'] = df_data.index
+        weighted_df['FilePath'] = df_data['FilePath']
         weighted_df['Cluster'] = train_clusters
     # Display the resulting DataFrame
     cluster_0_distances = weighted_df[weighted_df["Cluster"] == 0][
@@ -106,6 +103,7 @@ def pick_avereged_images(cluster_centers: np.ndarray, train_dataset: np.ndarray,
         ['FilePath', 'Distance_to_Cluster_3', "Cluster"]].sort_values(by='Distance_to_Cluster_3')
     # Get Middle values
     middle_value_cluster_0 = get_middle_value(cluster_0_distances)
+
     middle_value_cluster_1 = get_middle_value(cluster_1_distances)
     middle_value_cluster_2 = get_middle_value(cluster_2_distances)
     middle_value_cluster_3 = get_middle_value(cluster_3_distances)
@@ -113,7 +111,7 @@ def pick_avereged_images(cluster_centers: np.ndarray, train_dataset: np.ndarray,
     return middle_value_cluster_0, middle_value_cluster_1, middle_value_cluster_2, middle_value_cluster_3
 
 
-def clusterization(data: np.ndarray) -> Tuple[pd.DataFrame, np.ndarray, np.ndarray]:
+def clusterization(data: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, np.ndarray]:
     """
     Perform KMeans clustering on the input data.
 
@@ -126,7 +124,6 @@ def clusterization(data: np.ndarray) -> Tuple[pd.DataFrame, np.ndarray, np.ndarr
         - cluster_centers: Cluster centers obtained from KMeans.
         - train_clusters: Cluster labels assigned to the input data.
     """
-
     # Specify a range of clusters to test
     k_values = range(1, 11)
 
@@ -162,35 +159,29 @@ def main(args: dict) -> None:
     """
     # Retrieve command-line arguments or use default values
     input_path = args['input_path'] if args['input_path'] else INPUT_PATH
-    confidence_th = args['confidence_th'] if args['confidence_th'] else CONFIDENCE_TH
     model_name = args['model_name'] if args['model_name'] else MODEL_NAME
     detector_backend = args['detector_backend'] if args['detector_backend'] else DETECTOR_BACKEND
     output_path = args['output_path'] if args['output_path'] else OUTPUT_PATH
     n_img = args['n_img'] if args['n_img'] else N_IMG
 
-    # Define face size threshold
-    face_size_th = (50, 50)
-
     # Save cropped images based on specified parameters
-    save_cropped_images(path=input_path, output_path=output_path, confidence_th=confidence_th,
-                        face_size_th=face_size_th, n_img=n_img)
-
+    save_cropped_images(path=input_path, output_path=output_path, cascade=detector_backend, n_img=n_img)
+    mtcnn = MTCNN(select_largest=False, post_process=False, device=DEVICE, thresholds=[0.99, 0.99, 0.99])
+    embedding_model = InceptionResnetV1(pretrained=MODEL_NAME).eval()
     # Extract facial embeddings using specified parameters
-    train_dataset, df_embeddings = make_embeddings(path=input_path, model_name=model_name,
-                                                   detector_backend=detector_backend)
-
+    pipeline = Embeddings(mtcnn=mtcnn, embedding_model=embedding_model)
+    train_dataset = make_embeddings(output_path, pipeline)
     # Perform KMeans clustering on the training dataset
     df_result, cluster_centers, train_clusters = clusterization(train_dataset)
 
     # Get the middle value (file path) for each cluster
     middle_value_cluster_0, middle_value_cluster_1, middle_value_cluster_2, middle_value_cluster_3 = pick_avereged_images(
         cluster_centers, train_dataset, df_result, train_clusters)
-
     # Visualize the middle images for each cluster
-    visualize_image(middle_value_cluster_0, cluster_num=0)
-    visualize_image(middle_value_cluster_1, cluster_num=1)
-    visualize_image(middle_value_cluster_2, cluster_num=2)
-    visualize_image(middle_value_cluster_3, cluster_num=3)
+    visualize_image(os.path.join(output_path, middle_value_cluster_0), cluster_num=0)
+    visualize_image(os.path.join(output_path, middle_value_cluster_1), cluster_num=1)
+    visualize_image(os.path.join(output_path, middle_value_cluster_2), cluster_num=2)
+    visualize_image(os.path.join(output_path, middle_value_cluster_3), cluster_num=3)
 
 
 if __name__ == "__main__":

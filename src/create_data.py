@@ -1,7 +1,11 @@
 import os
+import torch.nn as nn
 import cv2
+import re
+import numpy as np
 import pandas as pd
-from deepface import DeepFace
+from PIL import Image
+from facenet_pytorch import MTCNN, InceptionResnetV1
 from sklearn.decomposition import PCA
 from config import *
 from typing import Tuple
@@ -29,7 +33,7 @@ def feature_extractor(df_data: pd.DataFrame) -> pd.DataFrame:
     return df_data_reduced
 
 
-def save_cropped_images(path: str, output_path: str, confidence_th: float, face_size_th: Tuple[int, int], n_img: int) -> None:
+def save_cropped_images(path: str, output_path: str, n_img: int, cascade: str) -> None:
     """
     Save cropped faces from input images to the specified output path.
 
@@ -43,80 +47,109 @@ def save_cropped_images(path: str, output_path: str, confidence_th: float, face_
     Returns:
     - None
     """
-    file_list = []
-    counter = 1
-
     # Check if the output path exists; if not, create it
     if not os.path.exists(output_path):
         os.makedirs(output_path)
 
-    # Traverse the directory structure to get a list of all files in the specified path
-    for root, dirs, files in os.walk(path):
-        file_list.extend([os.path.join(root, file) for file in files])
+    # Get a list of all folders in the specified path
+    list_folders = os.listdir(path)
+    images_list = []  # List to store all image paths
+    new_images_list = []  # List to store selected images
 
-    # Iterate through each file in the list
-    for file in file_list:
-        try:
-            # Extract faces from the image using DeepFace
-            face = DeepFace.extract_faces(img_path=file, target_size=(224, 224),
-                                          detector_backend=backends[4])  # [0]['face']
+    # Iterate through each folder and collect image paths
+    for folder in list_folders:
+        subfolder_path = os.path.join(path, folder)
+        temp_list = os.listdir(subfolder_path)
+        for img_path in temp_list:
+            images_list.append(os.path.join(subfolder_path, img_path))
 
-            # Check if the extracted face meets specified confidence and size criteria
-            if face[0]['confidence'] >= confidence_th and face[0]['facial_area']['h'] >= face_size_th[0] and \
-                    face[0]['facial_area']['w'] >= face_size_th[1]:
-                # Convert the face to RGB format and scale values
-                face = cv2.cvtColor(face[0]['face'], cv2.COLOR_BGR2RGB) * 255.0
+    # Process each image path
+    for path_im in images_list:
+        # Check if the desired number of images is reached
+        if len(new_images_list) == n_img:
+            break
 
-                # Extract the file name and save the face image to the output path
-                file_name = file.split('\\')[-1]
-                cv2.imwrite(os.path.join(output_path, file_name), face)
+        # Open the image and convert it to RGB format
+        frame = Image.open(path_im).convert('RGB')
 
-                # Update the counter and break if the desired number of images is reached
-                if counter < n_img:
-                    counter += 1
-                else:
-                    break
-        except Exception as e:
-            print(e)
-            # Ignore exceptions and continue processing other images
-            pass
+        # Check if the image has height equal to 1 (potential issue)
+        if (frame.height == 1):
+            continue
+
+        # Convert the image to grayscale
+        gray = np.array(frame)
+        gray = cv2.cvtColor(gray, cv2.COLOR_RGB2GRAY)
+
+        # Load the Haar cascade classifier for frontal faces
+        face_frontal_detector = cv2.CascadeClassifier(cv2.data.haarcascades + cascade)
+
+        # Detect faces in the grayscale image
+        faces = face_frontal_detector.detectMultiScale(gray, scaleFactor=1.3, minNeighbors=5)
+
+        # If faces are detected, save the image to the output path
+        if len(faces) != 0:
+            new_images_list.append(os.path.join(output_path, path_im))
+
+            # Define a regular expression pattern to extract the filename
+            pattern = r'.*/(\d+_\d{4}-\d{2}-\d{2}_\d{4}\.jpg)'
+
+            # Use re.search to find the match
+            match = re.search(pattern, os.path.join(output_path, path_im))
+
+            # Check if there's a match and extract the filename
+            if match:
+                filename = match.group(1)
+            else:
+                print("No match found.")
+
+            # Save the image with the extracted filename to the output path
+            frame.save(os.path.join(output_path, filename), "JPEG")
 
 
-def make_embeddings(path: str, model_name: str, detector_backend: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Extract facial embeddings from images in the specified path.
+class Embeddings(nn.Module):
+    def __init__(self, mtcnn: nn.Module, embedding_model: nn.Module):
+        super(Embeddings, self).__init__()
+        self.mtcnn = mtcnn
+        self.embedding_model = embedding_model
+        self.embedding_model.to(DEVICE)
 
-    Parameters:
-    - path (str): Input path containing images.
-    - model_name (str): Name of the face recognition model.
-    - detector_backend (str): Backend for face detection.
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Apply MTCNN to get cropped face image
+        img_cropped = self.mtcnn(x)
 
-    Returns:
-    - Tuple[pd.DataFrame, pd.DataFrame]: Tuple containing two DataFrames -
-        1. DataFrame with reduced features after PCA.
-        2. DataFrame with raw embeddings for each image.
-    """
-    # Create an empty DataFrame with 128 columns to store embeddings
-    df_data = pd.DataFrame(columns=range(128))
+        # Check if a face is detected
+        if img_cropped is not None:
+            # Apply the embedding model to get the facial embeddings
+            img_embedding = self.embedding_model(img_cropped.unsqueeze(0).to(DEVICE))
 
-    # Iterate through files in the specified path
-    for file in os.listdir(path):
-        file_path = os.path.join(path, file)  # Get the full file path
+            # Convert the tensor to a numpy array and return
+            return img_embedding.squeeze(0).detach().cpu().numpy()
 
-        try:
-            # Extract embeddings from the image file using DeepFace
-            embedding = DeepFace.represent(img_path=file_path, model_name=model_name, detector_backend=detector_backend)
 
-            # Add the extracted embedding to the DataFrame, using the file name as index
-            df_data.loc[file] = embedding[0]['embedding']
+def make_embeddings(path: str, pipeline: Embeddings) -> pd.DataFrame:
+    # Get a list of image paths in the specified directory
+    images_list = os.listdir(path)
 
-            # Print progress every 250 images
-            if len(df_data) % 250 == 0:
-                print(len(df_data), "images processed")
+    # Lists to store extracted features and corresponding image names
+    feature_list = []
+    new_images_list = []
 
-        except Exception as e:
-            # Ignore exceptions and continue processing other images
-            pass
-    # Reduced dataset
-    df_reduced = feature_extractor(df_data)
-    return df_reduced, df_data
+    # Iterate through each image path
+    for img_path in images_list:
+        # Open the image using PIL
+        frame = Image.open(os.path.join(path, img_path))
+
+        # Get facial embeddings using the provided pipeline
+        embedding = pipeline(frame)
+
+        # Check if embeddings are obtained
+        if embedding is not None:
+            # Append the embeddings and corresponding image name to the lists
+            feature_list.append(embedding)
+            new_images_list.append(img_path)
+
+    # Create a DataFrame with the extracted features and image names
+    df_data = pd.DataFrame(feature_list, columns=range(512), index=new_images_list)
+
+    # Return the DataFrame
+    return df_data

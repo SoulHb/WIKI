@@ -1,43 +1,18 @@
-# List of supported face recognition models
-models = [
-    "VGG-Face",
-    "Facenet",
-    "Facenet512",
-    "OpenFace",
-    "DeepFace",
-    "DeepID",
-    "ArcFace",
-    "Dlib",
-    "SFace",
-]
-
-# List of supported face detection backends
-backends = [
-    'opencv',
-    'ssd',
-    'dlib',
-    'mtcnn',
-    'retinaface',
-    'mediapipe',
-    'yolov8',
-    'yunet',
-    'fastmtcnn',
-]
+import torch
 
 # General data folder path
 INPUT_PATH = './wiki_crop'
 
 # Default face recognition model
-MODEL_NAME = 'Facenet'
+MODEL_NAME = 'vggface2'
 
 # Default number of images to extract faces from
-N_IMG = 9000
+N_IMG = 50
 
 # Default face detection backend
-DETECTOR_BACKEND = 'opencv'
-
-# Default confidence threshold for face extraction
-CONFIDENCE_TH = 0.95
+DETECTOR_BACKEND = 'haarcascade_frontalface_default.xml'
 
 # Default output path for saving extracted faces
-OUTPUT_PATH = 'extracted_faces'
+OUTPUT_PATH = './extracted_faces'
+
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'

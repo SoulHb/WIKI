@@ -64,7 +64,6 @@ def save_cropped_images(path: str, output_path: str, confidence_th: float, face_
             # Check if the extracted face meets specified confidence and size criteria
             if face[0]['confidence'] >= confidence_th and face[0]['facial_area']['h'] >= face_size_th[0] and \
                     face[0]['facial_area']['w'] >= face_size_th[1]:
-
                 # Convert the face to RGB format and scale values
                 face = cv2.cvtColor(face[0]['face'], cv2.COLOR_BGR2RGB) * 255.0
 
@@ -78,6 +77,7 @@ def save_cropped_images(path: str, output_path: str, confidence_th: float, face_
                 else:
                     break
         except Exception as e:
+            print(e)
             # Ignore exceptions and continue processing other images
             pass
 

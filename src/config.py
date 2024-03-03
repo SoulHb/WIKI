@@ -31,7 +31,7 @@ INPUT_PATH = './wiki_crop'
 MODEL_NAME = 'Facenet'
 
 # Default number of images to extract faces from
-N_IMG = 1
+N_IMG = 9000
 
 # Default face detection backend
 DETECTOR_BACKEND = 'opencv'

@@ -7,7 +7,7 @@ INPUT_PATH = './wiki_crop'
 MODEL_NAME = 'vggface2'
 
 # Default number of images to extract faces from
-N_IMG = 50
+N_IMG = 9000
 
 # Default face detection backend
 DETECTOR_BACKEND = 'haarcascade_frontalface_default.xml'

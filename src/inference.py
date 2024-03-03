@@ -167,7 +167,7 @@ def main(args: dict) -> None:
     # Save cropped images based on specified parameters
     save_cropped_images(path=input_path, output_path=output_path, cascade=detector_backend, n_img=n_img)
     mtcnn = MTCNN(select_largest=False, post_process=False, device=DEVICE, thresholds=[0.99, 0.99, 0.99])
-    embedding_model = InceptionResnetV1(pretrained=MODEL_NAME).eval()
+    embedding_model = InceptionResnetV1(pretrained=model_name).eval()
     # Extract facial embeddings using specified parameters
     pipeline = Embeddings(mtcnn=mtcnn, embedding_model=embedding_model)
     train_dataset = make_embeddings(output_path, pipeline)
@@ -190,8 +190,6 @@ if __name__ == "__main__":
 
     # Add command-line arguments for specifying paths
     parser.add_argument("--input_path", type=str, help='Specify path for input data folder')
-    # Add command-line arguments for specifying paths
-    parser.add_argument("--confidence_th", type=float, help='Specify  confidence for model')
     # Add command-line arguments for specifying paths
     parser.add_argument("--model_name", type=str, help='Specify name of model')
     # Add command-line arguments for specifying paths

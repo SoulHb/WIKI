@@ -1,0 +1,6 @@
+datasets
+src/__pycache__
+.idea
+src/runs
+src/extracted_faces
+src/wiki_crop
